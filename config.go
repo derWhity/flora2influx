@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/derWhity/flora2influx/device"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 )
@@ -13,7 +14,7 @@ import (
 type Configuration struct {
 	Influx     InfluxConfig     `yaml:"influx"`
 	Collection CollectionConfig `yaml:"collection"`
-	Devices    DeviceConfigMap  `yaml:"devices"`
+	Devices    device.ConfigMap `yaml:"devices"`
 }
 
 // Validate checks the values in the configuration for errornous values
@@ -68,23 +69,12 @@ type CollectionConfig struct {
 	Interval time.Duration `yaml:"interval"`
 }
 
-// DeviceConfigMap maps the MAC address of a device to the device's configuration
-type DeviceConfigMap map[string]DeviceConfig
-
-// DeviceConfig holds the collection config for a single flora device identified by its MAC
-type DeviceConfig struct {
-	// An alias name for the device. This will be written to the tags of each entry
-	Alias string `yaml:"alias"`
-	// If set to true, this device will be ignored during collection
-	Ignore bool `yaml:"ignore"`
-}
-
 func getDefaultConfig() *Configuration {
 	return &Configuration{
 		Influx: InfluxConfig{
 			Addr:            "http://localhost:8086",
 			Database:        "flora",
-			MeasurementName: "PlantSensorReadings",
+			MeasurementName: "PlantSensors",
 		},
 		Collection: CollectionConfig{
 			DiscoveryInterval: time.Hour,

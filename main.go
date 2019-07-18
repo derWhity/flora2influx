@@ -20,12 +20,12 @@ const (
 
 	// Tag names
 	tagMAC             = "mac"
-	tagAlias           = "alias"
+	tagName            = "name"
 	tagFirmwareVersion = "version"
 )
 
 func discoverAndRun(errChan chan error, config *Configuration, influxClient client.Client, logger *logrus.Entry) {
-	devices, err := device.Discover(config.Collection.DiscoveryTimeout, logger)
+	devices, err := device.Discover(config.Collection.DiscoveryTimeout, config.Devices, logger)
 	if err != nil {
 		logger.WithError(err).Error("Device discovery failed")
 		errChan <- err
@@ -40,17 +40,15 @@ func discoverAndRun(errChan chan error, config *Configuration, influxClient clie
 	reloadTimer := time.NewTimer(config.Collection.DiscoveryInterval)
 	tickTimer := time.NewTicker(config.Collection.Interval)
 	for {
-		/*
-			batch, err := client.NewBatchPoints(client.BatchPointsConfig{
-				Database:  config.Influx.Database,
-				Precision: "s",
-			})
-			if err != nil {
-				logger.WithError(err).Error("Failed to create point batch configuration")
-				errChan <- err
-				return
-			}
-		*/
+		batch, err := client.NewBatchPoints(client.BatchPointsConfig{
+			Database:  config.Influx.Database,
+			Precision: "s",
+		})
+		if err != nil {
+			logger.WithError(err).Error("Failed to create point batch configuration")
+			errChan <- err
+			return
+		}
 		for _, device := range devices {
 			readings, err := device.FetchReadings()
 			if err != nil {
@@ -58,29 +56,25 @@ func discoverAndRun(errChan chan error, config *Configuration, influxClient clie
 				continue
 			}
 			device.Logger.Infof("Received readings: %s", readings)
-			/*
-				tags := map[string]string{
-					tagManufacturer: device.RootDevice.Device.Manufacturer,
-					tagModel:        device.RootDevice.Device.ModelName,
-					tagHost:         device.RootDevice.URLBase.Hostname(),
-					tagUDN:          device.RootDevice.Device.UDN,
-				}
-				pt, err := client.NewPoint(config.Influx.MeasurementName, tags, readings.ToInfluxValues(), time.Now())
-				if err != nil {
-					device.Logger.WithError(err).Error("Failed to create data point for measurements")
-				}
-				batch.AddPoint(pt)
-			*/
-		}
-		/*
-			logger.Info("Exporting batch data to InfluxDB")
-			// Send the collected info to Influx
-			if err = influxClient.Write(batch); err != nil {
-				logger.WithError(err).Error("Failed to upload data to InfluxDB")
-			} else {
-				logger.Info("Batch successfully uploaded")
+			tags := map[string]string{
+				tagMAC:             device.GetID(),
+				tagName:            device.GetName(),
+				tagFirmwareVersion: readings.FirmwareVersion,
 			}
-		*/
+			pt, err := client.NewPoint(config.Influx.MeasurementName, tags, readings.ToInfluxValues(), time.Now())
+			if err != nil {
+				device.Logger.WithError(err).Error("Failed to create data point for measurements")
+			}
+			batch.AddPoint(pt)
+
+		}
+		logger.Info("Exporting batch data to InfluxDB")
+		// Send the collected info to Influx
+		if err = influxClient.Write(batch); err != nil {
+			logger.WithError(err).Error("Failed to upload data to InfluxDB")
+		} else {
+			logger.Info("Batch successfully uploaded")
+		}
 		// And now we'll wait
 		select {
 		case <-reloadTimer.C:

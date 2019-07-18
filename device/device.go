@@ -13,6 +13,7 @@ import (
 
 const (
 	fldDevice = "device"
+	fldAlias  = "alias"
 	// VHandle of the realtime data switching characteristic. You need to write 0xA01F to this in order to start
 	// the real-time data mode. Otherwise, the sensor readings will return a static value
 	vHandleRealtimeData = 0x33
@@ -22,6 +23,14 @@ const (
 	// VHandle of the sensor readings characteristic.
 	// Reading from this provides current temperature, light intensity, moisture and fertility readings
 	vHandleSensorReadings = 0x35
+
+	//-- Influx value names
+
+	keyBatteryLevel = "battery"
+	keyTemperature  = "temperature"
+	keyMoisture     = "moisture"
+	keyConductivity = "conductivity"
+	keyLight        = "light"
 )
 
 var (
@@ -40,7 +49,7 @@ var (
 //
 // The scanning will happen for the time-range given in `timeout` before it will stop
 // automatically
-func Discover(timeout time.Duration, logger *logrus.Entry) ([]*Device, error) {
+func Discover(timeout time.Duration, confMap ConfigMap, logger *logrus.Entry) ([]*Device, error) {
 	logger.Info("Discovering Bluetooth devices in the vincinity...")
 	out := []*Device{}
 	btDev, err := gatt.NewDevice(option.DefaultClientOptions...)
@@ -52,6 +61,16 @@ func Discover(timeout time.Duration, logger *logrus.Entry) ([]*Device, error) {
 			dev := &Device{
 				Logger:     logger.WithField(fldDevice, p.ID()),
 				peripheral: p,
+			}
+			if conf, ok := confMap[p.ID()]; ok {
+				if conf.Ignore {
+					dev.Logger.Infof("Device will be ignored")
+					return
+				}
+				if conf.Alias != "" {
+					dev.Logger = dev.Logger.WithField(fldAlias, conf.Alias)
+					dev.Alias = conf.Alias
+				}
 			}
 			dev.Logger.Info("Flora device detected")
 			out = append(out, dev)
@@ -102,12 +121,38 @@ func (r *Readings) String() string {
 	)
 }
 
+// ToInfluxValues returns the reading values as influx field values
+func (r *Readings) ToInfluxValues() map[string]interface{} {
+	return map[string]interface{}{
+		keyBatteryLevel: r.BatteryLevel,
+		keyTemperature:  r.Temperature,
+		keyMoisture:     r.Moisture,
+		keyConductivity: r.Conductivity,
+		keyLight:        r.Light,
+	}
+}
+
 // Device represents a router device found during discovery
 type Device struct {
 	// The peripheral found
 	peripheral gatt.Peripheral
 	// Logger entry that is preconfigured with fields identifying the router
 	Logger *logrus.Entry
+	// The alias if configured
+	Alias string
+}
+
+// GetName returns the device's alias or MAC address - depending on what is available
+func (dev *Device) GetName() string {
+	if dev.Alias != "" {
+		return dev.Alias
+	}
+	return dev.GetID()
+}
+
+// GetID returns the device's MAC address (ID)
+func (dev *Device) GetID() string {
+	return dev.peripheral.ID()
 }
 
 // FetchReadings tries to fetch the current readings from the device
