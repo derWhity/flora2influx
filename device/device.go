@@ -9,6 +9,7 @@ import (
 	"github.com/paypal/gatt"
 	"github.com/paypal/gatt/examples/option"
 	"github.com/sirupsen/logrus"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -55,6 +56,7 @@ func Discover(timeout time.Duration, confMap ConfigMap, logger *logrus.Entry) ([
 	btDev, err := gatt.NewDevice(option.DefaultClientOptions...)
 	if err != nil {
 		logger.WithError(err).Error("Failed to create a new GATT device")
+		return errors.Wrap(err, "Failed to create a new GATT device")
 	}
 	btDev.Handle(gatt.PeripheralDiscovered(func(p gatt.Peripheral, a *gatt.Advertisement, rssi int) {
 		if _, ok := floraDeviceNames[p.Name()]; ok {
